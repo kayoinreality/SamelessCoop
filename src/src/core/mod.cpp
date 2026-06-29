@@ -1,0 +1,417 @@
+// Main mod initialization
+//
+// Hook installation order:
+// 1. MinHook initialization
+// 2. Address resolution (GameManagerImp, NetSessionManager via AOB scan)
+// 3. Protobuf interception hooks (the core mechanism - blocks disconnect messages)
+// 4. Winsock hooks (connection monitoring)
+// 5. Game state hooks (optional - local event detection)
+// 6. Network/session/UI subsystems
+
+#include "../../include/mod.h"
+#include "../../include/hooks.h"
+#include "../../include/session.h"
+#include "../../include/network.h"
+#include "../../include/sync.h"
+#include "../../include/ui.h"
+#include "../../include/utils.h"
+#include "../../include/address_resolver.h"
+#include <fstream>
+#include <chrono>
+#include <utility>
+
+using namespace DS2Coop;
+using namespace DS2Coop::Utils;
+
+SeamlessCoopMod& SeamlessCoopMod::GetInstance() {
+    static SeamlessCoopMod instance;
+    return instance;
+}
+
+bool SeamlessCoopMod::Initialize() {
+    if (m_initialized) {
+        LOG_WARNING("Mod already initialized");
+        return true;
+    }
+
+    LOG_INFO("==========================================");
+    LOG_INFO("Initializing Seamless Co-op Mod...");
+    LOG_INFO("==========================================");
+
+    // Load configuration
+    LoadConfig();
+
+    if (!m_config.enabled) {
+        LOG_INFO("Mod is disabled in configuration");
+        return false;
+    }
+
+    // Detect game version
+    DetectGameVersion();
+
+    // ================================================================
+    // STEP 1: Initialize MinHook
+    // ================================================================
+    LOG_INFO("[1/6] Initializing MinHook...");
+    if (!Hooks::HookManager::GetInstance().Initialize()) {
+        LOG_ERROR("FATAL: MinHook initialization failed");
+        return false;
+    }
+    LOG_INFO("  MinHook ready");
+
+    // ================================================================
+    // STEP 2: Resolve game memory addresses via AOB pattern scanning
+    // ================================================================
+    LOG_INFO("[2/6] Scanning for game addresses...");
+    bool addressesFound = AddressResolver::GetInstance().Initialize();
+    if (addressesFound) {
+        LOG_INFO("  GameManagerImp:    0x%p [OK]",
+                 reinterpret_cast<void*>(AddressResolver::GetInstance().GetGameManagerImp()));
+        LOG_INFO("  NetSessionManager: 0x%p [OK]",
+                 reinterpret_cast<void*>(AddressResolver::GetInstance().GetNetSessionManager()));
+    } else {
+        LOG_WARNING("  Address resolution failed - player data reads will be unavailable");
+        LOG_WARNING("  Protobuf hooks may still work for disconnect prevention");
+    }
+
+    // ================================================================
+    // STEP 3: Install protobuf interception hooks (THE CRITICAL HOOKS)
+    // These hook SerializeWithCachedSizesToArray and ParseFromArray
+    // to intercept and block disconnect messages at the network layer.
+    // ================================================================
+    LOG_INFO("[3/6] Installing protobuf interception hooks...");
+    bool protobufHooked = Hooks::ProtobufHooks::InstallHooks();
+    if (protobufHooked) {
+        LOG_INFO("  Protobuf hooks ACTIVE - disconnect blocking available");
+        // Enable seamless mode immediately
+        Hooks::ProtobufHooks::SetSeamlessActive(true);
+    } else {
+        LOG_ERROR("  Protobuf hooks FAILED - mod running in passive mode");
+        LOG_ERROR("  Session disconnect prevention will NOT work");
+    }
+
+    // ================================================================
+    // STEP 4: Install Winsock hooks + server redirect
+    // ================================================================
+    LOG_INFO("[4/7] Installing Winsock hooks...");
+    Hooks::WinsockHooks::InstallHooks();
+
+    if (m_config.use_custom_server) {
+        LOG_INFO("[4/7] Setting up server redirect to %s:%u...",
+                 m_config.server_ip.c_str(), m_config.server_port);
+
+        // Configure the Winsock hook to redirect port 50031
+        Hooks::WinsockHooks::SetServerRedirect(m_config.server_ip, m_config.server_port);
+
+        // Find the public key file — check next to the DLL, then in server dir
+        std::string keyPath = "ds2_server_public.key";
+        {
+            std::ifstream testKey(keyPath);
+            if (!testKey.good()) {
+                testKey.clear();
+                keyPath = "Saved/default/public.key";
+                testKey.open(keyPath);
+            }
+            if (!testKey.good()) {
+                LOG_WARNING("[4/7] No public key file found — RSA patching will be skipped");
+                LOG_WARNING("[4/7] Place ds2_server_public.key in game folder for server auth");
+                // Still patch hostname in background thread (needs SteamStub wait)
+                std::string ip = m_config.server_ip;
+                CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+                    auto* ipStr = static_cast<std::string*>(param);
+                    Hooks::ServerRedirect::PatchHostname(*ipStr);
+                    delete ipStr;
+                    return 0;
+                }, new std::string(ip), 0, nullptr);
+            } else {
+                testKey.close();
+                // Run hostname + RSA patching in a background thread
+                // (needs to wait for SteamStub to unpack)
+                std::string ip = m_config.server_ip;
+                std::string kp = keyPath;
+                CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+                    auto* args = static_cast<std::pair<std::string, std::string>*>(param);
+                    Hooks::ServerRedirect::Install(args->first, args->second);
+                    delete args;
+                    return 0;
+                }, new std::pair<std::string, std::string>(ip, kp), 0, nullptr);
+            }
+        }
+    }
+
+    // ================================================================
+    // STEP 5: Install game state hooks (optional local event detection)
+    // ================================================================
+    LOG_INFO("[5/7] Installing game state hooks...");
+    Hooks::GameState::InstallHooks();
+
+    // ================================================================
+    // STEP 6: Initialize subsystems
+    // ================================================================
+    LOG_INFO("[6/7] Initializing subsystems...");
+
+    // Network manager (our P2P layer)
+    if (!Network::PeerManager::GetInstance().Initialize(m_config.port)) {
+        LOG_WARNING("  Network manager failed to initialize (can retry from menu)");
+    } else {
+        LOG_INFO("  Network manager ready (port %u)", m_config.port);
+    }
+
+    // Session manager
+    if (!Session::SessionManager::GetInstance().Initialize()) {
+        LOG_WARNING("  Session manager failed to initialize");
+    } else {
+        LOG_INFO("  Session manager ready");
+    }
+
+    // UI overlay + DX11 renderer (hooks IDXGISwapChain::Present).
+    // SamelessCoop: skip entirely when disable_overlay is set, so the game runs
+    // without any injected ImGui/DX11 interface (DS2 dislikes new interfaces).
+    if (!m_config.disable_overlay) {
+        if (!UI::OverlayRenderer::GetInstance().Initialize()) {
+            LOG_WARNING("  DX11 Present hook failed - in-game overlay unavailable");
+        } else {
+            LOG_INFO("  DX11 Present hook installed");
+        }
+        UI::Overlay::GetInstance().Initialize();
+        LOG_INFO("  UI overlay ready (Press INSERT for menu)");
+    } else {
+        LOG_INFO("  Overlay DISABLED (config-driven session, no in-game UI)");
+    }
+
+    // Title notifier
+    UI::TitleScreenNotifier::GetInstance().Start();
+
+    // Start the main update loop in a background thread
+    // This drives networking, sync, and session management
+    m_updateThread = CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+        auto* mod = static_cast<SeamlessCoopMod*>(param);
+        LOG_INFO("Update thread started");
+
+        auto lastTime = std::chrono::steady_clock::now();
+
+        while (mod->IsInitialized()) {
+            auto now = std::chrono::steady_clock::now();
+            float deltaTime = std::chrono::duration<float>(now - lastTime).count();
+            lastTime = now;
+
+            // Update session (which updates networking + player sync)
+            auto& sessionMgr = Session::SessionManager::GetInstance();
+            sessionMgr.Update(deltaTime);
+
+            // ~20Hz update rate
+            Sleep(50);
+        }
+
+        LOG_INFO("Update thread exiting");
+        return 0;
+    }, this, 0, nullptr);
+
+    m_initialized = true;
+
+    // SamelessCoop: config-driven auto session (no in-game menu needed).
+    // role=host  -> CreateSession(password)
+    // role=join  -> JoinSession(server_ip, password), retried until connected.
+    if (m_config.auto_connect) {
+        CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+            auto* mod = static_cast<SeamlessCoopMod*>(param);
+            const ModConfig& cfg = mod->GetConfig();
+            // Let the game finish booting before opening a session.
+            Sleep(8000);
+            auto& sm = Session::SessionManager::GetInstance();
+            if (cfg.role == "join") {
+                for (int i = 0; i < 40 && mod->IsInitialized(); ++i) {
+                    if (sm.IsActive()) { LOG_INFO("Auto-join: connected"); break; }
+                    LOG_INFO("Auto-join attempt %d -> %s", i + 1, cfg.server_ip.c_str());
+                    sm.JoinSession(cfg.server_ip, cfg.password);
+                    Sleep(3000);
+                }
+            } else {
+                for (int i = 0; i < 10 && mod->IsInitialized(); ++i) {
+                    if (sm.IsActive() || sm.CreateSession(cfg.password)) {
+                        LOG_INFO("Auto-host: session created");
+                        break;
+                    }
+                    LOG_WARNING("Auto-host retry %d", i + 1);
+                    Sleep(3000);
+                }
+            }
+            return 0;
+        }, this, 0, nullptr);
+        LOG_INFO("  Auto-connect armed (role=%s)", m_config.role.c_str());
+    }
+
+    // Final status report
+    LOG_INFO("==========================================");
+    LOG_INFO("SEAMLESS CO-OP INITIALIZATION COMPLETE");
+    LOG_INFO("==========================================");
+    LOG_INFO("  Addresses resolved: %s", addressesFound ? "YES" : "NO");
+    LOG_INFO("  Protobuf hooks:     %s", protobufHooked ? "ACTIVE" : "FAILED");
+    LOG_INFO("  Disconnect blocking: %s",
+             Hooks::ProtobufHooks::IsSeamlessActive() ? "ENABLED" : "DISABLED");
+    LOG_INFO("");
+    if (protobufHooked) {
+        LOG_INFO("  Press INSERT to open co-op menu");
+        LOG_INFO("  Host a session or join via IP");
+        LOG_INFO("  Sessions persist through boss kills and deaths");
+    } else {
+        LOG_INFO("  Running in PASSIVE MODE (title bar indicator only)");
+        LOG_INFO("  Protobuf patterns may not match your game version");
+    }
+    LOG_INFO("==========================================");
+
+    return true;
+}
+
+void SeamlessCoopMod::Shutdown() {
+    if (!m_initialized) return;
+
+    LOG_INFO("Shutting down mod...");
+
+    // Signal update thread to stop, then wait
+    m_initialized = false;
+    if (m_updateThread) {
+        WaitForSingleObject(m_updateThread, 3000);
+        CloseHandle(m_updateThread);
+        m_updateThread = nullptr;
+    }
+
+    // Disable seamless before unhooking
+    Hooks::ProtobufHooks::SetSeamlessActive(false);
+
+    LOG_INFO("Blocked %u disconnect messages during this session",
+             Hooks::ProtobufHooks::GetBlockedMessageCount());
+    LOG_INFO("Total protobuf messages processed: %u",
+             Hooks::ProtobufHooks::GetTotalMessageCount());
+
+    // Stop UI
+    UI::TitleScreenNotifier::GetInstance().Stop();
+    UI::Overlay::GetInstance().Shutdown();
+
+    // Shutdown subsystems
+    Sync::PlayerSync::GetInstance().Shutdown();
+    Sync::ProgressSync::GetInstance().Shutdown();
+    Session::SessionManager::GetInstance().Shutdown();
+    Network::PeerManager::GetInstance().Shutdown();
+
+    // Unhook
+    Hooks::ProtobufHooks::UninstallHooks();
+    Hooks::WinsockHooks::UninstallHooks();
+    Hooks::GameState::UninstallHooks();
+    Hooks::HookManager::GetInstance().Shutdown();
+
+    LOG_INFO("Mod shutdown complete");
+}
+
+bool SeamlessCoopMod::DetectGameVersion() {
+    LOG_INFO("Detecting game version...");
+
+    uintptr_t baseAddress = Memory::GetModuleBase();
+    if (!baseAddress) {
+        LOG_ERROR("Failed to get module base address");
+        return false;
+    }
+
+    LOG_INFO("  Module base: 0x%p", reinterpret_cast<void*>(baseAddress));
+    m_gameVersion = GameVersion::SteamLatest;
+    LOG_INFO("  Assuming Steam latest version");
+
+    return true;
+}
+
+bool SeamlessCoopMod::InstallHooks() {
+    // Hooks are now installed directly in Initialize() in the correct order
+    return true;
+}
+
+void SeamlessCoopMod::UninstallHooks() {
+    // Handled in Shutdown()
+}
+
+void SeamlessCoopMod::LoadConfig() {
+    LOG_INFO("Loading configuration...");
+
+    m_config = ModConfig{};
+
+    std::ifstream configFile("ds2_seamless_coop.ini");
+    if (configFile.is_open()) {
+        std::string line;
+        while (std::getline(configFile, line)) {
+            if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+
+            size_t pos = line.find('=');
+            if (pos != std::string::npos) {
+                std::string key = line.substr(0, pos);
+                std::string value = line.substr(pos + 1);
+
+                // Trim
+                key.erase(0, key.find_first_not_of(" \t"));
+                key.erase(key.find_last_not_of(" \t") + 1);
+                value.erase(0, value.find_first_not_of(" \t"));
+                value.erase(value.find_last_not_of(" \t") + 1);
+
+                if (key == "enabled") {
+                    m_config.enabled = (value == "true" || value == "1");
+                } else if (key == "debug_logging") {
+                    m_config.debug_logging = (value == "true" || value == "1");
+                } else if (key == "max_players") {
+                    m_config.max_players = static_cast<uint16_t>(std::stoi(value));
+                } else if (key == "port") {
+                    m_config.port = static_cast<uint16_t>(std::stoi(value));
+                } else if (key == "allow_invasions") {
+                    m_config.allow_invasions = (value == "true" || value == "1");
+                } else if (key == "sync_bonfires") {
+                    m_config.sync_bonfires = (value == "true" || value == "1");
+                } else if (key == "sync_items") {
+                    m_config.sync_items = (value == "true" || value == "1");
+                } else if (key == "sync_enemies") {
+                    m_config.sync_enemies = (value == "true" || value == "1");
+                } else if (key == "server_ip") {
+                    m_config.server_ip = value;
+                } else if (key == "server_port") {
+                    m_config.server_port = static_cast<uint16_t>(std::stoi(value));
+                } else if (key == "use_custom_server") {
+                    m_config.use_custom_server = (value == "true" || value == "1");
+                } else if (key == "auto_connect") {
+                    m_config.auto_connect = (value == "true" || value == "1");
+                } else if (key == "disable_overlay") {
+                    m_config.disable_overlay = (value == "true" || value == "1");
+                } else if (key == "role") {
+                    m_config.role = value;
+                } else if (key == "password") {
+                    m_config.password = value;
+                }
+            }
+        }
+        configFile.close();
+        LOG_INFO("Configuration loaded from file");
+    } else {
+        LOG_INFO("No configuration file found, using defaults");
+        SaveConfig();
+    }
+
+    if (m_config.debug_logging) {
+        Logger::GetInstance().SetMinLevel(LogLevel::Debug);
+    }
+}
+
+void SeamlessCoopMod::SaveConfig() {
+    std::ofstream configFile("ds2_seamless_coop.ini");
+    if (configFile.is_open()) {
+        configFile << "# Dark Souls 2 Seamless Co-op Configuration\n\n";
+        configFile << "enabled=true\n";
+        configFile << "debug_logging=" << (m_config.debug_logging ? "true" : "false") << "\n";
+        configFile << "max_players=" << m_config.max_players << "\n";
+        configFile << "port=" << m_config.port << "\n";
+        configFile << "\n# Sync settings\n";
+        configFile << "allow_invasions=" << (m_config.allow_invasions ? "true" : "false") << "\n";
+        configFile << "sync_bonfires=" << (m_config.sync_bonfires ? "true" : "false") << "\n";
+        configFile << "sync_items=" << (m_config.sync_items ? "true" : "false") << "\n";
+        configFile << "sync_enemies=" << (m_config.sync_enemies ? "true" : "false") << "\n";
+        configFile << "\n# Custom server settings\n";
+        configFile << "use_custom_server=" << (m_config.use_custom_server ? "true" : "false") << "\n";
+        configFile << "server_ip=" << m_config.server_ip << "\n";
+        configFile << "server_port=" << m_config.server_port << "\n";
+        configFile.close();
+    }
+}

@@ -1,0 +1,19 @@
+# Launcher compilado (recriado por Instalar.bat / build.bat)
+/SamelessCoop.exe
+
+# Artefatos de build C++
+/src/build/
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Arquivos baixados
+/downloads/
+
+# Dados por-usuario (criados ao usar o launcher)
+/config.ini
+/saves/
+
+# Backup local do mod que estava solto na pasta do jogo
+/removed_from_game_backup/

@@ -1,0 +1,49 @@
+# Build
+build/
+
+# Binaries
+*.dll
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+
+# OS
+Thumbs.db
+nul
+
+# Logs
+*.log
+
+# Dist/Release binaries (source only in git)
+dist/*.exe
+dist/*.dll
+Release/*.exe
+Release/*.dll
+
+.claude/
+*.zip
+third_party/ds3os
+
+# Secrets — NEVER commit private keys
+private.key
+*.pem
+
+# Server runtime data
+*.sqlite
+*.time
+server/Saved/default/private.key
+server/Saved/default/database.sqlite
+server/Saved/default/last_activity.time
+Release/Server/Saved/default/private.key
+Release/Server/Saved/default/database.sqlite
+Release/Server/Saved/default/last_activity.time
+third_party/ds3os/build/

@@ -1,0 +1,154 @@
+==========================================================
+  SAMELESSCOOP  -  Dark Souls II: Seamless Co-op
+  Launcher com SAVE SEPARADO (seu save vanilla fica intacto)
+==========================================================
+
+O QUE E ISTO
+------------
+Um launcher UNICO para jogar o Seamless Co-op de Dark Souls II
+(mod open-source de scheissgeist/Yui) SEM:
+  - sobrescrever o seu save normal (vanilla);
+  - deixar o mod ativo quando voce abrir o jogo pela Steam; e
+  - precisar de QUALQUER menu dentro do jogo (config so no CMD).
+
+Host e Joiner usam o MESMO launcher (voce escolhe no CMD). A sessao
+conecta automaticamente; o overlay in-game foi desligado.
+
+Voce joga o co-op rodando o SamelessCoop.exe. Para jogar normal,
+e so abrir pela Steam como sempre - 100% vanilla.
+
+
+COMO FUNCIONA (resumo)
+----------------------
+Ao abrir o SamelessCoop.exe, ele:
+  1. Copia o mod (dinput8.dll + config) para a pasta do jogo.
+  2. Guarda seu save vanilla em  saves\vanilla\  e carrega o save
+     de co-op de  saves\seamless\  no lugar (com backup datado em
+     saves\backups\ - que nunca e apagado).
+  3. Abre o Dark Souls II em modo offline e espera voce fechar.
+  4. Ao fechar: salva o progresso de co-op, RESTAURA seu save
+     vanilla e REMOVE o mod da pasta do jogo.
+
+Resultado: seu DS2SOFS0000.sl2 vanilla nunca e tocado pelo jogo
+modado. Co-op e vanilla ficam em saves separados.
+
+
+INSTALACAO (uma vez so)
+-----------------------
+Rode  Instalar.bat  (clique duplo). Ele:
+  - confere o .NET e o Visual C++ Redistributable (baixa se faltar);
+  - verifica os arquivos do mod (pasta  mod\ );
+  - compila o SamelessCoop.exe;
+  - roda um autoteste de seguranca do save.
+No fim, e so usar o SamelessCoop.exe.
+
+
+COMO USAR
+---------
+1. Tenha a Steam aberta e o Dark Souls II: Scholar of the First Sin
+   instalado.
+
+2. Para co-op por internet, voce e seus amigos precisam estar na
+   mesma rede virtual. Use Hamachi (vpn.net) ou ZeroTier - todos
+   entram na mesma rede e usam o IP 25.x.x.x que aparece la.
+   (Em LAN/mesma casa, use o IP local. Sem VPN, o HOST precisa
+   liberar a porta UDP 27015 no roteador.)
+
+3. Rode  SamelessCoop.exe . Ele abre primeiro a CONFIGURACAO (CMD):
+     - Modo:  [1] HOST (hospedar)  ou  [2] JOIN (entrar no amigo)
+     - JOIN pede o IP do HOST (o 25.x.x.x do amigo)
+     - Senha da sessao (host e joiner usam a MESMA)
+     - Dificuldade/jogabilidade: max de jogadores, invasoes PvP,
+       sincronizar inimigos/fogueiras/itens
+   As escolhas ficam salvas em config.ini (na proxima e so dar
+   Enter para repetir). Confirmando, ele inicia o jogo.
+
+4. Dentro do jogo: NAO precisa fazer NADA.
+     - A sessao conecta sozinha (auto-host / auto-join) a partir da
+       config. NAO existe menu no jogo - o overlay foi desligado de
+       proposito (o DS2 nao lida bem com interfaces injetadas).
+     - HOST e JOINER tem que usar a MESMA senha (definida na config).
+     - O JOINER pode levar ate ~1 min para conectar (tenta sozinho).
+     - Usem a Pedra Branca (White Sign Soapstone) para invocar um ao
+       outro normalmente.
+
+5. Joguem! A sessao NAO cai em morte, chefe, fogueira ou troca de
+   area.
+
+OBS sobre a senha: ela e aplicada AUTOMATICAMENTE pelo mod, lida da
+config. Voce nao digita nada dentro do jogo. So garanta que host e
+joiner escolheram a mesma senha no CMD de configuracao.
+
+
+PRIMEIRA SESSAO DE CO-OP
+------------------------
+Na primeira vez, o launcher pergunta:
+  [1] Personagem NOVO  (padrao - igual ao Seamless do Elden Ring)
+  [2] CLONAR seu personagem vanilla atual para o co-op
+O save de co-op fica guardado e e reaproveitado nas proximas vezes.
+
+
+SE O JOGO TRAVAR / FECHAR NO TAPA
+---------------------------------
+Sem problema. Na proxima vez que voce abrir o SamelessCoop.exe,
+ele detecta que a sessao anterior nao fechou direito e oferece
+restaurar seu save vanilla automaticamente. Seus backups ficam
+todos em  saves\backups\  e nunca sao apagados.
+
+Voce tambem pode forcar a restauracao a qualquer momento:
+abra o launcher e escolha a opcao [3] "Restaurar save vanilla".
+
+
+VOLTAR PARA O VANILLA / DESINSTALAR
+-----------------------------------
+Para jogar vanilla: e so abrir pela Steam normalmente. O launcher
+ja remove o mod ao fechar, entao a Steam sempre roda sem mod.
+
+Para remover tudo: apague a pasta D:\Samelesscoop. Se por acaso
+sobrou um dinput8.dll na pasta Game do jogo (so acontece se algo
+travou no meio), apague esse arquivo manualmente:
+  ...\Dark Souls II Scholar of the First Sin\Game\dinput8.dll
+
+
+SEGURANCA / BANIMENTO
+---------------------
+O mod usa servidor PRIVADO (modelo ds3os) e roda em modo offline:
+voce NAO se conecta aos servidores oficiais da FromSoftware durante
+o co-op, o que reduz muito o risco de ban. Mesmo assim, a regra de
+ouro e: nao misture jogo modado com o online oficial. Use o
+SamelessCoop.exe so para o co-op entre amigos.
+
+
+RECOMPILAR (opcional)
+---------------------
+- Launcher (C#): rode  build.bat  (usa o compilador C# que ja vem
+  no Windows; nao precisa instalar nada). Fonte em
+  launcher\SamelessCoopLauncher.cs
+- Mod (C++ .dll): rode  src\build_dll.bat  (precisa do Visual Studio
+  2022 Build Tools com workload C++). Ele gera a dll com auto-sessao
+  e overlay desligado; copie-a para  mod\dinput8.dll .
+  As mudancas estao em  src\src\core\mod.cpp  e  src\include\mod.h .
+
+
+ESTRUTURA DA PASTA
+------------------
+  Instalar.bat          <- rode UMA VEZ para instalar/compilar
+  SamelessCoop.exe      <- abra ESTE para configurar e jogar co-op
+  config.ini            <- suas ultimas configuracoes (criado ao usar)
+  build.bat             <- recompila so o launcher
+  LEIA-ME.txt           <- este arquivo
+  launcher\             <- codigo fonte do launcher (C#)
+  mod\                  <- mod UNIFICADO: dinput8.dll + key + Server\
+                           (a dll ja vem compilada com auto-sessao)
+  saves\
+    vanilla\            <- copia protegida do seu save normal
+    seamless\           <- seu save de co-op
+    backups\            <- backups datados (nunca apagados)
+    state.txt           <- estado atual (vanilla/seamless)
+  downloads\            <- zips originais do release (referencia)
+  src\                  <- codigo fonte completo do mod (open-source)
+  removed_from_game_backup\ <- mod que estava instalado manualmente
+                               na pasta do jogo (movido por seguranca)
+
+Mod base: github.com/scheissgeist/Seamless  (licenca MIT)
+==========================================================
