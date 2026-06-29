@@ -35,6 +35,7 @@ struct ModConfig {
     // SamelessCoop launcher additions: config-driven session, no in-game UI
     bool auto_connect = false;               // auto host/join from this config
     bool disable_overlay = false;            // skip the ImGui/DX11 overlay entirely
+    bool auto_grant_soapstone = false;       // grant role's soapstone once in-game
     std::string role = "host";               // "host" or "join"
     std::string password = "";               // session password (set by launcher)
 };

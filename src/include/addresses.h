@@ -251,6 +251,7 @@ namespace ItemGib {
 namespace ItemIDs {
     constexpr uint32_t WhiteSignSoapstone      = 0x03B280B0;
     constexpr uint32_t SmallWhiteSignSoapstone  = 0x03B2A7C0;
+    constexpr uint32_t HumanEffigy             = 0x0395D4D8;
 }
 
 // Item category types

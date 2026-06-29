@@ -8,7 +8,7 @@ O QUE E ISTO
 Um launcher UNICO para jogar o Seamless Co-op de Dark Souls II
 (mod open-source de scheissgeist/Yui) SEM:
   - sobrescrever o seu save normal (vanilla);
-  - deixar o mod ativo quando voce abrir o jogo pela Steam; e
+  - deixar o mod active quando voce abrir o jogo pela Steam; e
   - precisar de QUALQUER menu dentro do jogo (config so no CMD).
 
 Host e Joiner usam o MESMO launcher (voce escolhe no CMD). A sessao
@@ -25,7 +25,7 @@ Ao abrir o SamelessCoop.exe, ele:
   2. Guarda seu save vanilla em  saves\vanilla\  e carrega o save
      de co-op de  saves\seamless\  no lugar (com backup datado em
      saves\backups\ - que nunca e apagado).
-  3. Abre o Dark Souls II em modo offline e espera voce fechar.
+  3. Abre o Dark Souls II in modo offline e espera voce fechar.
   4. Ao fechar: salva o progresso de co-op, RESTAURA seu save
      vanilla e REMOVE o mod da pasta do jogo.
 
@@ -60,7 +60,7 @@ COMO USAR
      - Senha da sessao (host e joiner usam a MESMA)
      - Dificuldade/jogabilidade: max de jogadores, invasoes PvP,
        sincronizar inimigos/fogueiras/itens
-   As escolhas ficam salvas em config.ini (na proxima e so dar
+   As escolhas ficam salvas in config.ini (na proxima e so dar
    Enter para repetir). Confirmando, ele inicia o jogo.
 
 4. Dentro do jogo: NAO precisa fazer NADA.
@@ -69,8 +69,12 @@ COMO USAR
        proposito (o DS2 nao lida bem com interfaces injetadas).
      - HOST e JOINER tem que usar a MESMA senha (definida na config).
      - O JOINER pode levar ate ~1 min para conectar (tenta sozinho).
-     - Usem a Pedra Branca (White Sign Soapstone) para invocar um ao
-       outro normalmente.
+     - A pedra certa aparece automaticamente no inventario:
+         HOST recebe a Pedra Branca (White Sign Soapstone), para abrir
+         o mundo.
+         JOIN recebe a Pedra Branca Pequena (Small White Sign Soapstone),
+         para entrar.
+       Usem a pedra recebida para invocar um ao outro normalmente.
 
 5. Joguem! A sessao NAO cai em morte, chefe, fogueira ou troca de
    area.
@@ -105,7 +109,7 @@ Para jogar vanilla: e so abrir pela Steam normalmente. O launcher
 ja remove o mod ao fechar, entao a Steam sempre roda sem mod.
 
 Para remover tudo: apague a pasta D:\Samelesscoop. Se por acaso
-sobrou um dinput8.dll na pasta Game do jogo (so acontece se algo
+sobrou um dinput8.dll na pasta Game del jogo (so acontece se algo
 travou no meio), apague esse arquivo manualmente:
   ...\Dark Souls II Scholar of the First Sin\Game\dinput8.dll
 
@@ -117,6 +121,23 @@ voce NAO se conecta aos servidores oficiais da FromSoftware durante
 o co-op, o que reduz muito o risco de ban. Mesmo assim, a regra de
 ouro e: nao misture jogo modado com o online oficial. Use o
 SamelessCoop.exe so para o co-op entre amigos.
+
+
+SE O WINDOWS / ANTIVIRUS BLOQUEAR
+---------------------------------
+O launcher e o dinput8.dll nao tem assinatura digital e injetam/
+patcham o jogo na memoria — entao o Windows Defender / SmartScreen
+pode avisar ou bloquear (falso-positivo comum em mods).
+  - SmartScreen ("Windows protegeu seu PC"): clique em "Mais
+    informacoes" -> "Executar assim mesmo".
+  - Se o Windows "bloquear" o arquivo: clique direito no
+    SamelessCoop.exe (e em mod\dinput8.dll) -> Propriedades ->
+    marque "Desbloquear" -> OK.
+  - Se o Defender remover/colocar em quarentena o dinput8.dll,
+    adicione a pasta D:\Samelesscoop como exclusao em
+    Seguranca do Windows -> Protecao contra virus -> Exclusoes.
+Tudo aqui e open-source (codigo em src\ e launcher\) — voce pode
+auditar e recompilar voce mesmo.
 
 
 RECOMPILAR (opcional)

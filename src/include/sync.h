@@ -78,6 +78,10 @@ public:
 
     // Seamless helpers
     bool GrantSoapstones();
+    // SamelessCoop: grant role-appropriate co-op starter items.
+    // Host gets Human Effigies; joiner gets both white soapstones.
+    // Returns true only once the player is in-game.
+    bool GrantCoopStarterItemsForRole(bool isHost);
     bool MaxPhantomTimer();
     void EnableSummoning();
     std::string GetLocalCharacterName();

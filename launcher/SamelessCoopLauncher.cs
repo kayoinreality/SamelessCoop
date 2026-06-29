@@ -302,6 +302,7 @@ namespace SamelessCoop
             // SamelessCoop: config-driven session, no in-game overlay
             sb.AppendLine("auto_connect=true");
             sb.AppendLine("disable_overlay=true");
+            sb.AppendLine("auto_grant_soapstone=true");
             sb.AppendLine("role=" + (c.Mode == "host" ? "host" : "join"));
             sb.AppendLine("password=" + c.Password);
             return sb.ToString();
@@ -405,7 +406,7 @@ namespace SamelessCoop
             Info("Restaurando save vanilla a partir de saves\\vanilla ...");
             BackupLive(saveDir, "manual_pre");
             if (HasSaves(VanillaStore)) { LoadSaves(VanillaStore, saveDir); WriteState("vanilla"); Ok("Save vanilla restaurado."); }
-            else Warn("Nao ha save vanilla guardado em saves\\vanilla.");
+            else Warn("Nao ha save vanilla guardado in saves\\vanilla.");
         }
 
         static void StartupRepairCheck()

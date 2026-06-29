@@ -241,6 +241,27 @@ bool SeamlessCoopMod::Initialize() {
         LOG_INFO("  Auto-connect armed (role=%s)", m_config.role.c_str());
     }
 
+    // SamelessCoop: auto-grant the role's co-op starter items once in-game.
+    //   host   -> Human Effigies (fica humano / abre o mundo)
+    //   joiner -> White + Small White Sign Soapstone (entra em qualquer nivel)
+    if (m_config.auto_grant_soapstone) {
+        CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+            auto* mod = static_cast<SeamlessCoopMod*>(param);
+            bool isHost = (mod->GetConfig().role != "join");
+            // Retry until a character is loaded (ItemGive resolvable), then grant once.
+            for (int i = 0; i < 360 && mod->IsInitialized(); ++i) {
+                if (Sync::PlayerSync::GetInstance().GrantCoopStarterItemsForRole(isHost)) {
+                    LOG_INFO("Auto-grant: done (role=%s)",
+                             isHost ? "host" : "joiner");
+                    break;
+                }
+                Sleep(5000);
+            }
+            return 0;
+        }, this, 0, nullptr);
+        LOG_INFO("  Auto-grant soapstone armed");
+    }
+
     // Final status report
     LOG_INFO("==========================================");
     LOG_INFO("SEAMLESS CO-OP INITIALIZATION COMPLETE");
@@ -376,6 +397,8 @@ void SeamlessCoopMod::LoadConfig() {
                     m_config.auto_connect = (value == "true" || value == "1");
                 } else if (key == "disable_overlay") {
                     m_config.disable_overlay = (value == "true" || value == "1");
+                } else if (key == "auto_grant_soapstone") {
+                    m_config.auto_grant_soapstone = (value == "true" || value == "1");
                 } else if (key == "role") {
                     m_config.role = value;
                 } else if (key == "password") {
@@ -412,6 +435,12 @@ void SeamlessCoopMod::SaveConfig() {
         configFile << "use_custom_server=" << (m_config.use_custom_server ? "true" : "false") << "\n";
         configFile << "server_ip=" << m_config.server_ip << "\n";
         configFile << "server_port=" << m_config.server_port << "\n";
+        configFile << "\n# SamelessCoop launcher automation\n";
+        configFile << "auto_connect=" << (m_config.auto_connect ? "true" : "false") << "\n";
+        configFile << "disable_overlay=" << (m_config.disable_overlay ? "true" : "false") << "\n";
+        configFile << "auto_grant_soapstone=" << (m_config.auto_grant_soapstone ? "true" : "false") << "\n";
+        configFile << "role=" << m_config.role << "\n";
+        configFile << "password=" << m_config.password << "\n";
         configFile.close();
     }
 }

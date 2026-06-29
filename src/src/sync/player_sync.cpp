@@ -636,15 +636,16 @@ static bool g_itemGiveScanned = false;
 // Resolve the ItemGive function and AvailableItemBag pointer
 // ============================================================================
 static bool ResolveItemGive(uintptr_t& outBag) {
-    // Find ItemGive function via AOB (only scan once)
+    // Find ItemGive function via AOB. Cache only a successful scan so startup
+    // retries still work while the game is finishing its early load.
     if (!g_itemGiveScanned) {
-        g_itemGiveScanned = true;
         uintptr_t addr = DS2Coop::Utils::PatternScanner::FindPattern(
             ItemGib::ITEM_GIVE_PATTERN,
             ItemGib::ITEM_GIVE_MASK,
             nullptr);
         if (addr) {
             g_itemGiveFunc = reinterpret_cast<ItemGiveFunc>(addr);
+            g_itemGiveScanned = true;
             LOG_INFO("ItemGive function found at %p", reinterpret_cast<void*>(addr));
         } else {
             LOG_WARNING("ItemGive function not found — soapstone grant unavailable");
@@ -724,6 +725,44 @@ bool PlayerSync::GrantSoapstones() {
         LOG_ERROR("GrantSoapstones: ItemGive crashed (exception 0x%08X)",
                   GetExceptionCode());
         // Disable further attempts
+        g_itemGiveFunc = nullptr;
+        return false;
+    }
+}
+
+// ============================================================================
+// SamelessCoop: grant the role-appropriate co-op soapstone (one stone each).
+//   host   -> White Sign Soapstone        (abre o mundo / pode invocar)
+//   joiner -> Small White Sign Soapstone  (ignora Soul Memory; entra em qualquer nivel)
+// The host-can-only-summon-while-human limit is bypassed separately by
+// EnableSummoning() (hollowing clear + host-equivalent permission patch).
+// Returns false until the player is actually in-game (ItemGive resolvable), so
+// the caller can keep retrying until a character is loaded into the world.
+// ============================================================================
+bool PlayerSync::GrantCoopStarterItemsForRole(bool isHost) {
+    uintptr_t bag = 0;
+    if (!ResolveItemGive(bag)) {
+        return false; // not in-game yet (no character loaded)
+    }
+
+    DS2ItemStruct item = {};
+    item.type       = ItemCategory::Consumable;
+    item.itemId     = isHost ? ItemIDs::WhiteSignSoapstone
+                             : ItemIDs::SmallWhiteSignSoapstone;
+    item.durability = FLT_MAX;
+    item.quantity   = 1;
+    item.upgrade    = 0;
+    item.infusion   = 0;
+
+    __try {
+        g_itemGiveFunc(reinterpret_cast<void*>(bag), &item, 1, 0);
+        LOG_INFO("Auto-grant: soapstone given (%s)",
+                 isHost ? "White Sign Soapstone (host)"
+                        : "Small White Sign Soapstone (joiner)");
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        LOG_ERROR("Auto-grant: ItemGive crashed (0x%08X)", GetExceptionCode());
         g_itemGiveFunc = nullptr;
         return false;
     }
