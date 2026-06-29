@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 
 using namespace DS2Coop::Hooks;
 using namespace DS2Coop::Utils;
@@ -39,9 +40,115 @@ static std::string g_redirectIP = "127.0.0.1";
 static uint16_t g_redirectPort = 50031;
 
 // ============================================================================
+// Boot-service HTTP emulation state
+//
+// At startup DS2 probes a Bandai "is the service up?" endpoint over plain HTTP
+// (port 80) BEFORE it contacts the login server on 50031. With the retail
+// endpoint dead, that probe fails and the game shows the "DARK SOULS II service
+// is not available" popup — whose only outcomes drop the game into OFFLINE mode,
+// which disables the summon-sign system the co-op depends on. We answer the
+// probe ourselves: a tiny local HTTP responder returns "200 OK", and ConnectHook
+// redirects the boot-window port-80 connection to it. The game then proceeds
+// online, where the 50031 redirect routes matchmaking to the private server.
+// ============================================================================
+static volatile DWORD    g_installTick = 0;       // GetTickCount() when hooks installed
+static volatile bool     g_loginSeen   = false;   // real 50031 redirect observed -> boot done
+static volatile SOCKET   g_bootListenSock = INVALID_SOCKET;
+static HANDLE            g_bootThread  = nullptr;  // responder thread (joined on shutdown)
+static volatile uint16_t g_bootHttpPort = 0;      // ephemeral port of our local responder
+static const DWORD       BOOT_WINDOW_MS = 90000;   // only emulate within 90s of boot
+
+// Minimal local HTTP responder: accept -> (drain request) -> "200 OK" -> close.
+static DWORD WINAPI BootHttpResponderThread(LPVOID) {
+    int failures = 0;
+    for (;;) {
+        SOCKET listenSock = g_bootListenSock;
+        if (listenSock == INVALID_SOCKET) break; // shutting down
+        SOCKET client = accept(listenSock, nullptr, nullptr);
+        if (client == INVALID_SOCKET) {
+            if (g_bootListenSock == INVALID_SOCKET) break;
+            if (++failures > 50) { LOG_WARNING("[BOOT] responder stopping after repeated accept() failures"); break; }
+            Sleep(50);
+            continue;
+        }
+        failures = 0;
+        __try {
+            char reqbuf[4096];
+            int n = recv(client, reqbuf, sizeof(reqbuf) - 1, 0);
+            if (n > 0) {
+                reqbuf[n] = '\0';
+                // Log the FULL probe request (one line) so the exact endpoint
+                // path + Host are visible — that's the key to knowing what a real
+                // success body should look like if an empty 200 is ever rejected.
+                for (int i = 0; i < n; ++i) {
+                    unsigned char c = static_cast<unsigned char>(reqbuf[i]);
+                    if (c == '\r') reqbuf[i] = ' ';
+                    else if (c == '\n') reqbuf[i] = '|';
+                    else if (c < 0x20 || c > 0x7e) reqbuf[i] = '.';
+                }
+                LOG_INFO("[BOOT] Service probe request: %s", reqbuf);
+            }
+            static const char* resp =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/plain\r\n"
+                "Content-Length: 0\r\n"
+                "Connection: close\r\n"
+                "\r\n";
+            send(client, resp, static_cast<int>(strlen(resp)), 0);
+            shutdown(client, SD_SEND);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+        closesocket(client);
+    }
+    return 0;
+}
+
+// Bring up the local responder on 127.0.0.1:<ephemeral>; record the port so
+// ConnectHook can redirect the boot probe to it. Failure is non-fatal (we just
+// don't emulate — same as before).
+static void StartBootHttpResponder() {
+    // Winsock is already initialized by the game by the time hooks install, so
+    // socket() succeeds without our own WSAStartup (avoids an unbalanced refcount).
+    SOCKET ls = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (ls == INVALID_SOCKET) {
+        LOG_WARNING("[BOOT] responder socket() failed (%d)", WSAGetLastError());
+        return;
+    }
+
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+    addr.sin_port = 0; // ephemeral
+
+    if (bind(ls, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+        LOG_WARNING("[BOOT] responder bind() failed (%d)", WSAGetLastError());
+        closesocket(ls);
+        return;
+    }
+    int len = sizeof(addr);
+    if (getsockname(ls, reinterpret_cast<sockaddr*>(&addr), &len) == SOCKET_ERROR ||
+        listen(ls, 8) == SOCKET_ERROR) {
+        LOG_WARNING("[BOOT] responder getsockname/listen failed (%d)", WSAGetLastError());
+        closesocket(ls);
+        return;
+    }
+
+    g_bootListenSock = ls;
+    g_bootHttpPort = ntohs(addr.sin_port);
+    LOG_INFO("[BOOT] HTTP responder up on 127.0.0.1:%u (answers DS2 service probe)", g_bootHttpPort);
+
+    // Keep the thread handle so UninstallHooks can join it on shutdown.
+    g_bootThread = CreateThread(nullptr, 0, BootHttpResponderThread, nullptr, 0, nullptr);
+}
+
+// ============================================================================
 // Hooked Winsock connect() — redirects FromSoft server to custom server
 // ============================================================================
 static int WSAAPI ConnectHook(SOCKET s, const sockaddr* name, int namelen) {
+    // Defensive: never jump through a null trampoline (shouldn't happen — MinHook
+    // sets the trampoline before enabling the hook — but this runs in the game's
+    // network path, so fail the connect rather than risk a null call).
+    if (!g_originalConnect) { WSASetLastError(WSAENETDOWN); return SOCKET_ERROR; }
+
     if (name && name->sa_family == AF_INET) {
         sockaddr_in* addr = const_cast<sockaddr_in*>(reinterpret_cast<const sockaddr_in*>(name));
         uint16_t port = ntohs(addr->sin_port);
@@ -50,6 +157,19 @@ static int WSAAPI ConnectHook(SOCKET s, const sockaddr* name, int namelen) {
         inet_ntop(AF_INET, &addr->sin_addr, ipStr, sizeof(ipStr));
 
         LOG_INFO("[NET] Game connecting to %s:%u", ipStr, port);
+
+        // Boot-service probe (plain HTTP, port 80): answer it locally so DS2
+        // does not fall into offline mode. Only inside the boot window, only
+        // until the real login redirect (50031) is seen, and only if our local
+        // responder came up.
+        if (g_redirectActive && port == 80 && !g_loginSeen && g_bootHttpPort != 0 &&
+            (GetTickCount() - g_installTick) < BOOT_WINDOW_MS) {
+            LOG_INFO("[BOOT] Redirecting service probe %s:80 -> 127.0.0.1:%u (local 200 OK)",
+                     ipStr, g_bootHttpPort);
+            inet_pton(AF_INET, "127.0.0.1", &addr->sin_addr);
+            addr->sin_port = htons(g_bootHttpPort);
+            return g_originalConnect(s, name, namelen);
+        }
 
         // Redirect all game server connections (login=50031, auth=50000, game=50010+)
         if (g_redirectActive && (port == DS2_LOGIN_PORT || port == 50000 ||
@@ -66,6 +186,7 @@ static int WSAAPI ConnectHook(SOCKET s, const sockaddr* name, int namelen) {
             LOG_INFO("[NET] Connection redirected to %s:%u", newIp, port);
 
             g_gameOnline = true;
+            g_loginSeen = true;   // boot done — stop touching port 80
         } else if (port == DS2_LOGIN_PORT) {
             LOG_INFO("[NET] Detected DS2 login server connection (port %u) — redirect OFF", DS2_LOGIN_PORT);
             g_gameOnline = true;
@@ -91,6 +212,12 @@ bool WinsockHooks::IsRedirectActive() {
 
 bool WinsockHooks::InstallHooks() {
     LOG_INFO("Installing Winsock hooks...");
+
+    // Start the boot window and bring up the local service-probe responder so
+    // the game's port-80 "service available?" check succeeds instead of forcing
+    // offline mode.
+    g_installTick = GetTickCount();
+    StartBootHttpResponder();
 
     HMODULE ws2 = GetModuleHandleA("ws2_32.dll");
     if (!ws2) {
@@ -123,6 +250,17 @@ bool WinsockHooks::InstallHooks() {
 
 void WinsockHooks::UninstallHooks() {
     LOG_INFO("Uninstalling Winsock hooks...");
+    // Tear down the boot-HTTP responder; closing the listen socket unblocks its
+    // accept(), then join the thread so it is fully gone before we return (no
+    // use-after-close / handle-recycle race inside the game process).
+    SOCKET ls = g_bootListenSock;
+    g_bootListenSock = INVALID_SOCKET;
+    if (ls != INVALID_SOCKET) closesocket(ls);
+    if (g_bootThread) {
+        WaitForSingleObject(g_bootThread, 2000);
+        CloseHandle(g_bootThread);
+        g_bootThread = nullptr;
+    }
 }
 
 // ============================================================================

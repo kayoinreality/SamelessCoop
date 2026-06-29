@@ -7,7 +7,7 @@
 //   0. CONFIG  -> interactive console: mode, IP, password, gameplay/difficulty
 //   1. STAGE   -> copy dinput8.dll + ini + key + steam_appid.txt into Game\
 //   2. SWAP    -> back up vanilla save, load the separate co-op save
-//   3. LAUNCH  -> start DarkSoulsII.exe -offline and wait for it to close
+//   3. LAUNCH  -> start DarkSoulsII.exe ONLINE (mod redirects to private server) and wait
 //   4. CLEANUP -> persist co-op save, restore vanilla save, remove dinput8.dll
 //
 // The vanilla DS2SOFS0000.sl2 is never written by the modded game.
@@ -245,7 +245,7 @@ namespace SamelessCoop
                     Warn("A Steam nao parece aberta. Abra a Steam antes de jogar.");
 
                 Console.WriteLine();
-                Info("Abrindo Dark Souls II em modo -offline...");
+                Info("Abrindo Dark Souls II (online, redirecionado pro servidor privado)...");
                 if (isHost)
                     Console.WriteLine("  Auto-HOST: a sessao abre sozinha. Compartilhe a senha: " + cfg.Password);
                 else
@@ -303,6 +303,16 @@ namespace SamelessCoop
 
         static void UnstageMod(string gameDir)
         {
+            // Preserve the mod log for diagnostics (the launcher otherwise removes
+            // it with the rest of the staged files). Copy to the SamelessCoop
+            // folder as last_session.log before deleting it from the game folder.
+            try
+            {
+                string log = Path.Combine(gameDir, "ds2_seamless_coop.log");
+                if (File.Exists(log))
+                    File.Copy(log, Path.Combine(BaseDir, "last_session.log"), true);
+            }
+            catch { }
             TryDelete(Path.Combine(gameDir, "dinput8.dll"));
             TryDelete(Path.Combine(gameDir, "ds2_seamless_coop.ini"));
             TryDelete(Path.Combine(gameDir, "ds2_server_public.key"));
@@ -502,7 +512,11 @@ namespace SamelessCoop
         static void LaunchGameAndWait(string gameDir)
         {
             string exe = Path.Combine(gameDir, "DarkSoulsII.exe");
-            var psi = new ProcessStartInfo(exe, "-offline");
+            // Boot ONLINE (no -offline). The mod redirects the game's matchmaking
+            // to the private server (Winsock + hostname/RSA patch) and answers the
+            // boot service-probe locally. -offline would disable the summon-sign
+            // system the co-op needs, so the joiner could never place a sign.
+            var psi = new ProcessStartInfo(exe, "");
             psi.WorkingDirectory = gameDir;
             psi.UseShellExecute = false;
             Process p = Process.Start(psi);

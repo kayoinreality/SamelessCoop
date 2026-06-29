@@ -14,6 +14,7 @@
 # Dados por-usuario (criados ao usar o launcher)
 /config.ini
 /saves/
+/last_session.log
 
 # Backup local do mod que estava solto na pasta do jogo
 /removed_from_game_backup/
