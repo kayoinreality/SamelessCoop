@@ -5,6 +5,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <atomic>
 
 namespace DS2Coop::UI {
 
@@ -20,7 +21,9 @@ private:
     ~TitleScreenNotifier();
     HWND FindGameWindow();
     void UpdateThread();
-    bool m_running = false;
+    // Written by Stop() (shutdown thread), read by UpdateThread() — must be atomic
+    // so the worker reliably observes the stop signal and to avoid a data race.
+    std::atomic<bool> m_running{false};
     std::thread m_thread;
 };
 

@@ -11,6 +11,7 @@
 #include "../../include/hooks.h"
 #include "../../include/sync.h"
 #include "../../include/session.h"
+#include "../../include/network.h"
 #include "../../include/utils.h"
 #include "MinHook.h"
 
@@ -28,11 +29,13 @@ static GameState::BossDefeatedFunc g_originalBossDefeated = nullptr;
 static void __fastcall PlayerDeathHook(void* playerPtr) {
     LOG_INFO("[GAME] Player death detected");
 
-    // Notify session manager
+    // Notify session manager. Use the lock-free local ID rather than
+    // GetLocalPlayer(), which returns a raw pointer into m_players without
+    // holding m_playersMutex — unsafe from this game-thread hook.
     auto& sessionMgr = DS2Coop::Session::SessionManager::GetInstance();
-    auto* localPlayer = sessionMgr.GetLocalPlayer();
-    if (localPlayer) {
-        sessionMgr.NotifyPlayerDeath(localPlayer->playerId);
+    uint64_t localId = DS2Coop::Network::PeerManager::GetInstance().GetLocalPlayerId();
+    if (localId != 0) {
+        sessionMgr.NotifyPlayerDeath(localId);
     }
 
     // Call original - let the death happen

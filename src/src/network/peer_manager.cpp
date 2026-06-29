@@ -383,29 +383,41 @@ void PeerManager::HandleHandshakePacket(const HandshakePacket* hs, const sockadd
             return;
         }
 
-        // Password matches - register peer
+        // Password matches - register peer.
+        // m_peers is shared with the title-bar HUD thread (GetPeerCount) and the
+        // render thread (BroadcastPacket). HandleIncomingPackets runs this path
+        // OUTSIDE Update()'s m_peersMutex block, so without this guard a push_back
+        // here can realloc the vector while another thread reads it — a crash.
+        // Hold the lock only around the list access; do logging/Steam/seamless after.
         bool alreadyKnown = false;
-        for (auto& peer : m_peers) {
-            if (peer.playerId == hs->playerId) {
-                peer.lastHeartbeat = NowMs();
-                peer.connected = true;
-                alreadyKnown = true;
-                break;
+        uint16_t newPeerPort = 0;
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_peersMutex);
+            for (auto& peer : m_peers) {
+                if (peer.playerId == hs->playerId) {
+                    peer.lastHeartbeat = NowMs();
+                    peer.connected = true;
+                    alreadyKnown = true;
+                    break;
+                }
+            }
+
+            if (!alreadyKnown) {
+                PeerInfo newPeer{};
+                newPeer.playerId = hs->playerId;
+                newPeer.playerName = hs->playerName;
+                newPeer.address = senderAddr.sin_addr.s_addr;
+                newPeer.port = ntohs(senderAddr.sin_port);
+                newPeer.lastHeartbeat = NowMs();
+                newPeer.connected = true;
+                m_peers.push_back(newPeer);
+                newPeerPort = newPeer.port;
             }
         }
 
         if (!alreadyKnown) {
-            PeerInfo newPeer{};
-            newPeer.playerId = hs->playerId;
-            newPeer.playerName = hs->playerName;
-            newPeer.address = senderAddr.sin_addr.s_addr;
-            newPeer.port = ntohs(senderAddr.sin_port);
-            newPeer.lastHeartbeat = NowMs();
-            newPeer.connected = true;
-            m_peers.push_back(newPeer);
-
             LOG_INFO("Peer accepted: %s (ID: %llu) from port %u",
-                     hs->playerName, hs->playerId, newPeer.port);
+                     hs->playerName, hs->playerId, newPeerPort);
 
             // Extract peer's Steam ID from password field ("password|steamid")
             std::string pw(hs->password);
@@ -441,14 +453,18 @@ void PeerManager::HandleHandshakePacket(const HandshakePacket* hs, const sockadd
         // Client: this is the host's response to our handshake
         LOG_INFO("Received handshake response from host (ID: %llu)", hs->playerId);
 
-        // Update the host peer entry with the real player ID
-        for (auto& peer : m_peers) {
-            if (peer.address == senderAddr.sin_addr.s_addr) {
-                peer.playerId = hs->playerId;
-                peer.playerName = hs->playerName;
-                peer.lastHeartbeat = NowMs();
-                peer.connected = true;
-                break;
+        // Update the host peer entry with the real player ID.
+        // Guard the peer list — this also runs outside Update()'s m_peersMutex block.
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_peersMutex);
+            for (auto& peer : m_peers) {
+                if (peer.address == senderAddr.sin_addr.s_addr) {
+                    peer.playerId = hs->playerId;
+                    peer.playerName = hs->playerName;
+                    peer.lastHeartbeat = NowMs();
+                    peer.connected = true;
+                    break;
+                }
             }
         }
 

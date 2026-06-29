@@ -4,6 +4,76 @@ All notable changes to the DS2 Seamless Co-op mod are documented here.
 
 ---
 
+## [SamelessCoop] — June 29, 2026
+
+### Summary
+
+Concurrency-stability pass. The February code review's bugs were all already
+addressed in the source, but an audit of the live hot paths turned up further
+data races of the same class that the review missed — most importantly a
+**regression introduced by the February deadlock fix itself**. These are the
+"instabilities" inherited from the upstream layout; fixing them makes the
+session HUD and phantom join/leave flow crash-safe.
+
+### Fixed
+
+#### 1. `m_peers` data race in `PeerManager::HandleHandshakePacket` (regression)
+**File:** `src/network/peer_manager.cpp`
+
+The February deadlock fix moved `HandleIncomingPackets()` *outside* `Update()`'s
+`m_peersMutex` block to break the ABBA lock order. But the handshake path it
+calls reads `m_peers` and `push_back`s to it with no lock held. The title-bar
+HUD thread reads the same vector every 500 ms via `GetPeerCount()` (which *does*
+lock — uselessly, since the writer didn't). A `push_back` reallocation racing
+that read is a crash that surfaces exactly when a peer connects.
+
+**Fix:** Both the host-side (existence check + insert) and client-side (host
+entry update) `m_peers` accesses are now wrapped in
+`std::lock_guard<std::recursive_mutex>(m_peersMutex)`. The lock is scoped to the
+list access only — logging, Steam-ID registration, `SetSeamlessActive`, and the
+`sendto` response run after the lock is released, so no new lock-ordering edge
+is created with `m_playersMutex`.
+
+#### 2. Unlocked `GetLocalPlayer()` from the protobuf-parse thread
+**File:** `src/hooks/session_hooks.cpp`
+
+`OnPhantomLeft()` runs on the game's `ParseFromArray` thread and called
+`SessionManager::GetLocalPlayer()`, which returns a raw `SessionPlayer*` into
+`m_players` without holding `m_playersMutex`. A concurrent `AddPlayer`/
+`RemovePlayer` on the update thread could realloc the vector and leave that
+pointer dangling.
+
+**Fix:** Resolve the local ID lock-free via
+`PeerManager::GetInstance().GetLocalPlayerId()` (set once at session start)
+instead of dereferencing an unlocked pointer.
+
+#### 3. Same unlocked `GetLocalPlayer()` in `PlayerDeathHook` (dormant)
+**File:** `src/hooks/game_state_hooks.cpp`
+
+`PlayerDeathHook` had the identical unlocked access. The hook is not currently
+installed (no AOB address yet), so it was a dormant landmine rather than a live
+crash — fixed now so wiring up the address later can't reintroduce it.
+
+**Fix:** Same lock-free `GetLocalPlayerId()` substitution; added the
+`network.h` include.
+
+#### 4. `TitleScreenNotifier::m_running` was a non-atomic `bool`
+**Files:** `include/ui.h`
+
+The flag is written by `Stop()` (shutdown thread) and read by the worker's
+`while (m_running)` loop — a data race, and the worker was not guaranteed to
+observe the stop signal.
+
+**Fix:** Changed to `std::atomic<bool>`; added `<atomic>` to `ui.h`.
+
+### Build
+
+Requires Windows + MSVC (`src/build_dll.bat`, VS 2022 C++ Build Tools). These
+are source-level fixes; the shipped `mod/dinput8.dll` must be rebuilt on Windows
+to carry them.
+
+---
+
 ## [Unreleased] — February 4, 2026
 
 ### Summary
