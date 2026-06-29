@@ -28,6 +28,65 @@ SeamlessCoopMod& SeamlessCoopMod::GetInstance() {
     return instance;
 }
 
+// Winsock hook + server redirect + hostname/RSA patch. Extracted so it can run
+// either early (InitNetworkEarly) or as STEP 4 of the full Initialize().
+void SeamlessCoopMod::SetupNetworkRedirect() {
+    LOG_INFO("Installing Winsock hooks...");
+    Hooks::WinsockHooks::InstallHooks();
+
+    if (!m_config.use_custom_server) return;
+
+    LOG_INFO("Setting up server redirect to %s:%u...",
+             m_config.server_ip.c_str(), m_config.server_port);
+    Hooks::WinsockHooks::SetServerRedirect(m_config.server_ip, m_config.server_port);
+
+    // Find the public key file — next to the DLL, then in the server dir.
+    std::string keyPath = "ds2_server_public.key";
+    std::ifstream testKey(keyPath);
+    if (!testKey.good()) { testKey.clear(); keyPath = "Saved/default/public.key"; testKey.open(keyPath); }
+
+    if (!testKey.good()) {
+        LOG_WARNING("No public key file found — RSA patching will be skipped");
+        // Patch the hostname anyway (retries until SteamStub unpacks the string).
+        std::string ip = m_config.server_ip;
+        CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+            auto* ipStr = static_cast<std::string*>(param);
+            Hooks::ServerRedirect::PatchHostname(*ipStr);
+            delete ipStr;
+            return 0;
+        }, new std::string(ip), 0, nullptr);
+    } else {
+        testKey.close();
+        std::string ip = m_config.server_ip;
+        std::string kp = keyPath;
+        CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
+            auto* args = static_cast<std::pair<std::string, std::string>*>(param);
+            Hooks::ServerRedirect::Install(args->first, args->second);
+            delete args;
+            return 0;
+        }, new std::pair<std::string, std::string>(ip, kp), 0, nullptr);
+    }
+}
+
+// Arm the redirect + boot-probe responder at DLL load, before the game's early
+// online attempts. Degrades gracefully: if MinHook isn't ready yet, leaves the
+// flag false so the full Initialize() does the normal (delayed) network setup.
+void SeamlessCoopMod::InitNetworkEarly() {
+    if (m_networkEarlyDone) return;
+
+    LoadConfig();
+    if (!m_config.enabled) return;
+
+    LOG_INFO("[EARLY] Arming network hooks before the game's online init...");
+    if (!Hooks::HookManager::GetInstance().Initialize()) {
+        LOG_WARNING("[EARLY] MinHook not ready yet — full init will set up the network");
+        return;
+    }
+    SetupNetworkRedirect();
+    m_networkEarlyDone = true;
+    LOG_INFO("[EARLY] Network hooks armed (redirect + boot responder up)");
+}
+
 bool SeamlessCoopMod::Initialize() {
     if (m_initialized) {
         LOG_WARNING("Mod already initialized");
@@ -52,12 +111,16 @@ bool SeamlessCoopMod::Initialize() {
     // ================================================================
     // STEP 1: Initialize MinHook
     // ================================================================
-    LOG_INFO("[1/6] Initializing MinHook...");
-    if (!Hooks::HookManager::GetInstance().Initialize()) {
-        LOG_ERROR("FATAL: MinHook initialization failed");
-        return false;
+    if (!m_networkEarlyDone) {
+        LOG_INFO("[1/6] Initializing MinHook...");
+        if (!Hooks::HookManager::GetInstance().Initialize()) {
+            LOG_ERROR("FATAL: MinHook initialization failed");
+            return false;
+        }
+        LOG_INFO("  MinHook ready");
+    } else {
+        LOG_INFO("[1/6] MinHook already initialized (early network init)");
     }
-    LOG_INFO("  MinHook ready");
 
     // ================================================================
     // STEP 2: Resolve game memory addresses via AOB pattern scanning
@@ -92,51 +155,14 @@ bool SeamlessCoopMod::Initialize() {
 
     // ================================================================
     // STEP 4: Install Winsock hooks + server redirect
+    // (skipped if InitNetworkEarly already armed them at DLL load — the early
+    //  path is what lets the redirect beat the game's offline fallback)
     // ================================================================
-    LOG_INFO("[4/7] Installing Winsock hooks...");
-    Hooks::WinsockHooks::InstallHooks();
-
-    if (m_config.use_custom_server) {
-        LOG_INFO("[4/7] Setting up server redirect to %s:%u...",
-                 m_config.server_ip.c_str(), m_config.server_port);
-
-        // Configure the Winsock hook to redirect port 50031
-        Hooks::WinsockHooks::SetServerRedirect(m_config.server_ip, m_config.server_port);
-
-        // Find the public key file — check next to the DLL, then in server dir
-        std::string keyPath = "ds2_server_public.key";
-        {
-            std::ifstream testKey(keyPath);
-            if (!testKey.good()) {
-                testKey.clear();
-                keyPath = "Saved/default/public.key";
-                testKey.open(keyPath);
-            }
-            if (!testKey.good()) {
-                LOG_WARNING("[4/7] No public key file found — RSA patching will be skipped");
-                LOG_WARNING("[4/7] Place ds2_server_public.key in game folder for server auth");
-                // Still patch hostname in background thread (needs SteamStub wait)
-                std::string ip = m_config.server_ip;
-                CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
-                    auto* ipStr = static_cast<std::string*>(param);
-                    Hooks::ServerRedirect::PatchHostname(*ipStr);
-                    delete ipStr;
-                    return 0;
-                }, new std::string(ip), 0, nullptr);
-            } else {
-                testKey.close();
-                // Run hostname + RSA patching in a background thread
-                // (needs to wait for SteamStub to unpack)
-                std::string ip = m_config.server_ip;
-                std::string kp = keyPath;
-                CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
-                    auto* args = static_cast<std::pair<std::string, std::string>*>(param);
-                    Hooks::ServerRedirect::Install(args->first, args->second);
-                    delete args;
-                    return 0;
-                }, new std::pair<std::string, std::string>(ip, kp), 0, nullptr);
-            }
-        }
+    if (!m_networkEarlyDone) {
+        LOG_INFO("[4/7] Installing Winsock hooks + server redirect...");
+        SetupNetworkRedirect();
+    } else {
+        LOG_INFO("[4/7] Winsock hooks + redirect already armed early — skipping");
     }
 
     // ================================================================

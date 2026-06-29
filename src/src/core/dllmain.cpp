@@ -64,9 +64,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         HANDLE hThread = CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
             LOG_INFO("Mod initialization thread started...");
+            auto& mod = SeamlessCoopMod::GetInstance();
+            // Arm the network redirect + boot-probe responder FIRST, before the
+            // game's early online attempts (which happen in the first seconds and
+            // otherwise hit the dead retail servers -> offline mode). The rest of
+            // init (address scan, protobuf hooks) still waits for the game to settle.
+            mod.InitNetworkEarly();
             Sleep(3000);
             LOG_INFO("Calling SeamlessCoopMod::Initialize()...");
-            auto& mod = SeamlessCoopMod::GetInstance();
             if (mod.Initialize()) {
                 LOG_INFO("========================================");
                 LOG_INFO("MOD INITIALIZED SUCCESSFULLY!");

@@ -46,8 +46,14 @@ public:
     static SeamlessCoopMod& GetInstance();
     
     bool Initialize();
+    // Bring up the Winsock hook + server redirect + boot-probe responder
+    // IMMEDIATELY at DLL load (before the game's early online attempts), instead
+    // of waiting for the delayed full Initialize(). Without this the game contacts
+    // the (dead) retail servers in the first seconds and drops to offline mode
+    // before the redirect is armed. Safe to call once; the rest of init follows.
+    void InitNetworkEarly();
     void Shutdown();
-    
+
     bool IsInitialized() const { return m_initialized; }
     GameVersion GetGameVersion() const { return m_gameVersion; }
     const ModConfig& GetConfig() const { return m_config; }
@@ -64,8 +70,10 @@ private:
     bool DetectGameVersion();
     bool InstallHooks();
     void UninstallHooks();
-    
+    void SetupNetworkRedirect();   // Winsock hook + redirect + hostname/RSA patch
+
     bool m_initialized = false;
+    bool m_networkEarlyDone = false;  // network hooks already armed early (skip in Initialize)
     GameVersion m_gameVersion = GameVersion::Unknown;
     ModConfig m_config;
     HANDLE m_updateThread = nullptr;
