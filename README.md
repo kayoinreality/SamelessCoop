@@ -24,8 +24,9 @@ O SamelessCoop resolve os três:
 | Host vs Joiner | **Um launcher só**; você escolhe no CMD de configuração |
 | Item certo por papel | O launcher entrega o item do papel: **Host** recebe **Efígie Humana** (fica humano e **invoca** — é isso que "abre o mundo"); **Joiner** recebe as **Pedras Brancas** (coloca o sinal para o host invocar) |
 
-A conexão usa um **servidor privado** (modelo ds3os) em modo offline — você **não** toca nos
-servidores oficiais da FromSoftware durante o co-op.
+A conexão usa um **servidor privado** (modelo ds3os): o jogo abre **online**, mas o mod
+**redireciona** todo o matchmaking pro servidor privado (patch de hostname/RSA + Winsock) —
+você **não** toca nos servidores oficiais da FromSoftware durante o co-op.
 
 ## Instalação
 
@@ -40,7 +41,7 @@ servidores oficiais da FromSoftware durante o co-op.
 ## Como jogar
 
 1. Rode `SamelessCoop.exe` → abre a **configuração** (modo Host/Join, IP, senha, dificuldade).
-2. Confirma → o jogo abre em `-offline` e a sessão **conecta sozinha**.
+2. Confirma → o jogo abre **online** (o mod redireciona a conexão pro servidor privado) e a sessão **conecta sozinha**.
 3. Dentro do jogo **não há menu**. O **Host** recebe **Efígie Humana**: fica humano e **invoca**. O **Joiner** recebe as **Pedras Brancas**: usa a pedra para **colocar o sinal de invocação** no chão (os dois na mesma área, ex.: Majula) e o host invoca clicando no sinal. A pedra **não** abre o seu próprio mundo — ela serve para você **ser invocado**.
 4. Ao fechar, o save vanilla volta intacto e o mod sai da pasta do jogo.
 
@@ -56,7 +57,7 @@ Detalhes completos em [`LEIA-ME.txt`](LEIA-ME.txt).
 ## Segurança
 
 - O save vanilla nunca é gravado pelo jogo modado; backups datados em `saves/backups/` nunca são apagados.
-- Servidor privado + modo offline reduzem muito o risco de ban. Mesmo assim: **não misture com o online oficial**.
+- O **redirect** pro servidor privado (e não um "modo offline") é o que te mantém longe dos servidores oficiais da FromSoftware — reduz muito o risco de ban. Mesmo assim: **não misture com o online oficial**.
 
 ## Créditos e licença
 

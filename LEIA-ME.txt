@@ -25,7 +25,9 @@ Ao abrir o SamelessCoop.exe, ele:
   2. Guarda seu save vanilla em  saves\vanilla\  e carrega o save
      de co-op de  saves\seamless\  no lugar (com backup datado em
      saves\backups\ - que nunca e apagado).
-  3. Abre o Dark Souls II in modo offline e espera voce fechar.
+  3. Abre o Dark Souls II ONLINE e espera voce fechar. O mod redireciona
+     a conexao do jogo pro servidor privado (nao toca nos servidores
+     oficiais da FromSoftware). A Steam precisa estar online.
   4. Ao fechar: salva o progresso de co-op, RESTAURA seu save
      vanilla e REMOVE o mod da pasta do jogo.
 
@@ -122,11 +124,18 @@ travou no meio), apague esse arquivo manualmente:
 
 SEGURANCA / BANIMENTO
 ---------------------
-O mod usa servidor PRIVADO (modelo ds3os) e roda em modo offline:
-voce NAO se conecta aos servidores oficiais da FromSoftware durante
-o co-op, o que reduz muito o risco de ban. Mesmo assim, a regra de
-ouro e: nao misture jogo modado com o online oficial. Use o
+O mod usa servidor PRIVADO (modelo ds3os). O jogo abre ONLINE (precisa
+da Steam online), mas o mod REDIRECIONA toda a conexao de matchmaking
+pro servidor privado (patch de hostname/RSA + Winsock) — voce NAO se
+conecta aos servidores oficiais da FromSoftware durante o co-op. E o
+redirect (e nao um "modo offline") que te protege: o jogo nunca chega
+nos servers oficiais. Isso reduz muito o risco de ban. Mesmo assim, a
+regra de ouro e: nao misture jogo modado com o online oficial. Use o
 SamelessCoop.exe so para o co-op entre amigos.
+
+Obs.: a Steam pode ficar online normalmente. Nao tente coloca-la em
+offline no meio da sessao — isso reinicia a Steam e derruba o co-op
+(a sessao usa a Steam game server API para identificar os jogadores).
 
 
 SE O WINDOWS / ANTIVIRUS BLOQUEAR
@@ -142,6 +151,15 @@ pode avisar ou bloquear (falso-positivo comum em mods).
   - Se o Defender remover/colocar em quarentena o dinput8.dll,
     adicione a pasta D:\Samelesscoop como exclusao em
     Seguranca do Windows -> Protecao contra virus -> Exclusoes.
+  - SMART APP CONTROL (Windows 11): se aparecer "Imagem Incorreta"
+    com status 0xc0e90002 ao abrir o jogo, e o Smart App Control
+    bloqueando a dll sem assinatura (NAO e o antivirus — o Defender
+    nem acusa). Ele decide por reputacao de cada arquivo, entao pode
+    bloquear builds novas. A unica forma confiavel de rodar mods sem
+    assinatura e DESLIGAR o Smart App Control (Seguranca do Windows ->
+    Controle de aplicativos e navegador -> Configuracoes do Controle
+    Inteligente de Aplicativos -> Desativado). ATENCAO: depois de
+    desligado, so volta a ligar reinstalando o Windows.
 Tudo aqui e open-source (codigo em src\ e launcher\) — voce pode
 auditar e recompilar voce mesmo.
 
