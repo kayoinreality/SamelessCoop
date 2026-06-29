@@ -354,8 +354,12 @@ static void OnPhantomLeft() {
     LOG_INFO("[SEAMLESS] Phantom left world — removing from session");
     auto& sm = DS2Coop::Session::SessionManager::GetInstance();
     auto players = sm.GetPlayers();
-    auto* local = sm.GetLocalPlayer();
-    uint64_t localId = local ? local->playerId : 0;
+    // Resolve the local ID without GetLocalPlayer(): that returns a raw pointer
+    // into m_players without holding m_playersMutex, and this runs on the game's
+    // protobuf-parse thread — a concurrent AddPlayer/RemovePlayer on the update
+    // thread could realloc the vector and dangle the pointer. The local ID is
+    // available lock-free from PeerManager (set once at session start).
+    uint64_t localId = DS2Coop::Network::PeerManager::GetInstance().GetLocalPlayerId();
     for (const auto& p : players) {
         if (p.playerId != localId) {
             sm.RemovePlayer(p.playerId);
