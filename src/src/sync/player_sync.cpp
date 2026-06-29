@@ -731,9 +731,14 @@ bool PlayerSync::GrantSoapstones() {
 }
 
 // ============================================================================
-// SamelessCoop: grant the role-appropriate co-op soapstone (one stone each).
-//   host   -> White Sign Soapstone        (abre o mundo / pode invocar)
-//   joiner -> Small White Sign Soapstone  (ignora Soul Memory; entra em qualquer nivel)
+// SamelessCoop: grant the role-appropriate co-op starter items.
+//   host   -> Human Effigy                         (fica humano -> pode invocar / abre o mundo)
+//   joiner -> White + Small White Sign Soapstone   (coloca o sinal; o host invoca)
+//
+// Mecanica do DS2: quem COLOCA o sinal com a pedra branca e' o FANTASMA (joiner);
+// quem INVOCA (estando humano) e' o HOST. Por isso o host recebe a Efigie Humana
+// (e NAO a pedra) e o joiner recebe as pedras de sinalizacao. A Pedra Branca
+// Pequena ignora o Soul Memory, entao amigos em niveis diferentes conectam.
 // The host-can-only-summon-while-human limit is bypassed separately by
 // EnableSummoning() (hollowing clear + host-equivalent permission patch).
 // Returns false until the player is actually in-game (ItemGive resolvable), so
@@ -745,20 +750,34 @@ bool PlayerSync::GrantCoopStarterItemsForRole(bool isHost) {
         return false; // not in-game yet (no character loaded)
     }
 
-    DS2ItemStruct item = {};
-    item.type       = ItemCategory::Consumable;
-    item.itemId     = isHost ? ItemIDs::WhiteSignSoapstone
-                             : ItemIDs::SmallWhiteSignSoapstone;
-    item.durability = FLT_MAX;
-    item.quantity   = 1;
-    item.upgrade    = 0;
-    item.infusion   = 0;
+    // Build the role's item list (host: Human Effigy; joiner: the soapstones).
+    uint32_t ids[2] = {0};
+    int count = 0;
+    if (isHost) {
+        ids[count++] = ItemIDs::HumanEffigy;
+    } else {
+        ids[count++] = ItemIDs::WhiteSignSoapstone;
+        ids[count++] = ItemIDs::SmallWhiteSignSoapstone;
+    }
+
+    DS2ItemStruct items[2] = {};
+    for (int i = 0; i < count; ++i) {
+        items[i].type       = ItemCategory::Consumable;
+        items[i].itemId     = ids[i];
+        items[i].durability = FLT_MAX;
+        items[i].quantity   = 1;
+        items[i].upgrade    = 0;
+        items[i].infusion   = 0;
+    }
 
     __try {
-        g_itemGiveFunc(reinterpret_cast<void*>(bag), &item, 1, 0);
-        LOG_INFO("Auto-grant: soapstone given (%s)",
-                 isHost ? "White Sign Soapstone (host)"
-                        : "Small White Sign Soapstone (joiner)");
+        // Give items one at a time to isolate which one crashes (if any).
+        for (int i = 0; i < count; ++i) {
+            g_itemGiveFunc(reinterpret_cast<void*>(bag), &items[i], 1, 0);
+        }
+        LOG_INFO("Auto-grant: starter items given (%s)",
+                 isHost ? "Human Effigy (host)"
+                        : "White + Small White Sign Soapstone (joiner)");
         return true;
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {

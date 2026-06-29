@@ -250,7 +250,10 @@ namespace SamelessCoop
                     Console.WriteLine("  Auto-HOST: a sessao abre sozinha. Compartilhe a senha: " + cfg.Password);
                 else
                     Console.WriteLine("  Auto-JOIN: conectando em " + cfg.HostIp + " (senha: " + cfg.Password + ")");
-                Console.WriteLine("  Sem menu no jogo. Usem a Pedra Branca para se invocar.");
+                if (isHost)
+                    Console.WriteLine("  Sem menu no jogo. Voce (HOST) recebe Efigie Humana: fique humano e INVOQUE o amigo no sinal dele (e isso que abre o mundo).");
+                else
+                    Console.WriteLine("  Sem menu no jogo. Voce (JOIN) recebe a Pedra Branca: use-a para COLOCAR o sinal de invocacao; o host te invoca.");
                 LaunchGameAndWait(cfg.GameDir);
                 Console.WriteLine();
                 Info("Jogo fechado. Limpando...");

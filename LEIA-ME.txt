@@ -69,12 +69,18 @@ COMO USAR
        proposito (o DS2 nao lida bem com interfaces injetadas).
      - HOST e JOINER tem que usar a MESMA senha (definida na config).
      - O JOINER pode levar ate ~1 min para conectar (tenta sozinho).
-     - A pedra certa aparece automaticamente no inventario:
-         HOST recebe a Pedra Branca (White Sign Soapstone), para abrir
-         o mundo.
-         JOIN recebe a Pedra Branca Pequena (Small White Sign Soapstone),
-         para entrar.
-       Usem a pedra recebida para invocar um ao outro normalmente.
+     - O item certo aparece automaticamente no inventario:
+         HOST recebe Efigie Humana (Human Effigy). O host NAO usa pedra:
+         ele fica humano e INVOCA o amigo (e isso que "abre o mundo").
+         JOIN recebe as Pedras Brancas (White + Small White Sign
+         Soapstone). O joiner USA a pedra para COLOCAR o sinal de
+         invocacao no chao; o host entao invoca clicando no sinal.
+       Resumo do fluxo (os dois na MESMA area, ex.: Majula):
+         1) host fica humano (ja vem com a Efigie);
+         2) joiner usa a pedra branca e coloca o sinal;
+         3) host anda ate o sinal e invoca -> mundo aberto, co-op ativo.
+       Obs.: a pedra NAO abre o seu proprio mundo - ela serve para VOCE
+       ser invocado. Por isso o host nao usa pedra, so invoca.
 
 5. Joguem! A sessao NAO cai em morte, chefe, fogueira ou troca de
    area.

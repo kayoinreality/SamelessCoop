@@ -22,7 +22,7 @@ O SamelessCoop resolve os três:
 | Save sobrescrito | **Troca de saves**: o vanilla é protegido em `saves/vanilla/` (+ backups datados) e o co-op vive em `saves/seamless/` |
 | Config in-game | **Auto-host / auto-join** lendo a config; o **overlay é desligado** (`disable_overlay`) |
 | Host vs Joiner | **Um launcher só**; você escolhe no CMD de configuração |
-| Pedra correta | O launcher entrega automaticamente a pedra do papel: Host recebe a **Pedra Branca**; Joiner recebe a **Pedra Branca Pequena** |
+| Item certo por papel | O launcher entrega o item do papel: **Host** recebe **Efígie Humana** (fica humano e **invoca** — é isso que "abre o mundo"); **Joiner** recebe as **Pedras Brancas** (coloca o sinal para o host invocar) |
 
 A conexão usa um **servidor privado** (modelo ds3os) em modo offline — você **não** toca nos
 servidores oficiais da FromSoftware durante o co-op.
@@ -41,7 +41,7 @@ servidores oficiais da FromSoftware durante o co-op.
 
 1. Rode `SamelessCoop.exe` → abre a **configuração** (modo Host/Join, IP, senha, dificuldade).
 2. Confirma → o jogo abre em `-offline` e a sessão **conecta sozinha**.
-3. Dentro do jogo **não há menu**: o Host recebe a Pedra Branca; o Joiner recebe a Pedra Branca Pequena. Usem a pedra recebida para se invocar.
+3. Dentro do jogo **não há menu**. O **Host** recebe **Efígie Humana**: fica humano e **invoca**. O **Joiner** recebe as **Pedras Brancas**: usa a pedra para **colocar o sinal de invocação** no chão (os dois na mesma área, ex.: Majula) e o host invoca clicando no sinal. A pedra **não** abre o seu próprio mundo — ela serve para você **ser invocado**.
 4. Ao fechar, o save vanilla volta intacto e o mod sai da pasta do jogo.
 
 Detalhes completos em [`LEIA-ME.txt`](LEIA-ME.txt).
