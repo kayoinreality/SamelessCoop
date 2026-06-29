@@ -279,6 +279,7 @@ namespace SamelessCoop
             TryDelete(Path.Combine(gameDir, "ds2_seamless_coop.ini"));
             TryDelete(Path.Combine(gameDir, "ds2_server_public.key"));
             TryDelete(Path.Combine(gameDir, "steam_appid.txt"));
+            TryDelete(Path.Combine(gameDir, "ds2_seamless_coop.log"));
             string bak = Path.Combine(gameDir, "dinput8.dll.sameless_bak");
             if (File.Exists(bak)) { File.Copy(bak, Path.Combine(gameDir, "dinput8.dll"), true); TryDelete(bak); }
         }
