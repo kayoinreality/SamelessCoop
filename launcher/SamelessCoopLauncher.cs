@@ -28,7 +28,7 @@ namespace SamelessCoop
         public string GameDir = "";
         public string Mode = "host";        // host | join
         public string HostIp = "";          // join: friend's IP
-        public string Password = "";         // applied in the in-game INSERT menu
+        public string Password = "";         // applied automatically by the mod (no in-game menu)
         public int MaxPlayers = 6;
         public bool AllowInvasions = false;
         public bool SyncEnemies = false;
@@ -73,22 +73,47 @@ namespace SamelessCoop
                 if (saveDir != null) Info("Save: " + saveDir);
                 else Warn("Save do DS2 ainda nao existe (sera criado ao jogar).");
 
+                // Load any saved config so we can offer a 1-click replay.
+                Config cfg = LoadConfig();
+                cfg.GameDir = gameDir;
+                bool hasSaved = File.Exists(ConfigFile) && cfg.Password.Length > 0;
+
                 // ---- top-level menu ----
                 Console.WriteLine();
-                Console.WriteLine("  [J] Configurar e JOGAR co-op");
+                if (hasSaved)
+                {
+                    string modeLabel = cfg.Mode == "host"
+                        ? "HOST"
+                        : ("JOIN -> " + (cfg.HostIp.Length > 0 ? cfg.HostIp : "?"));
+                    Console.WriteLine("  [J] JOGAR com a ultima config  (" + modeLabel
+                                      + ", senha: " + cfg.Password + ")");
+                    Console.WriteLine("  [C] Reconfigurar e jogar");
+                }
+                else
+                {
+                    Console.WriteLine("  [J] Configurar e JOGAR co-op");
+                }
                 Console.WriteLine("  [R] Restaurar save vanilla (seguranca)");
                 Console.WriteLine("  [Q] Sair");
                 Console.WriteLine();
                 Console.Write("  Opcao: ");
                 string top = ReadLineLower();
                 if (top == "r") { ForceRestoreVanilla(saveDir); Pause(); return 0; }
-                if (top != "j" && top != "") return 0;
+                if (top == "q") return 0;
 
-                // ---- CONFIG CONSOLE ----
-                Config cfg = LoadConfig();
-                cfg.GameDir = gameDir;
-                RunConfigConsole(cfg);
-                SaveConfig(cfg);
+                // Quick-replay only when there IS a saved config and the user picked [J]/Enter.
+                bool quickReplay = hasSaved && (top == "j" || top == "");
+
+                // ---- CONFIG CONSOLE (skipped on quick-replay) ----
+                if (!quickReplay)
+                {
+                    RunConfigConsole(cfg);
+                    SaveConfig(cfg);
+                }
+                else
+                {
+                    Info("Usando a ultima config (" + (cfg.Mode == "host" ? "HOST" : "JOIN " + cfg.HostIp) + ").");
+                }
 
                 // --dry: validate config without staging/launching (for testing)
                 if (args.Any(a => a == "--dry"))

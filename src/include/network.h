@@ -121,6 +121,11 @@ public:
     void BroadcastPacket(const PacketHeader* packet);
     
     const std::vector<PeerInfo>& GetPeers() const { return m_peers; }
+    // Thread-safe peer count (for the title-bar status HUD).
+    size_t GetPeerCount() const {
+        std::lock_guard<std::recursive_mutex> lk(m_peersMutex);
+        return m_peers.size();
+    }
     bool IsHost() const { return m_isHost; }
     bool IsConnected() const { return m_connected; }
 

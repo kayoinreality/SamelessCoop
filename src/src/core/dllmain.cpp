@@ -70,7 +70,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             if (mod.Initialize()) {
                 LOG_INFO("========================================");
                 LOG_INFO("MOD INITIALIZED SUCCESSFULLY!");
-                LOG_INFO("Press INSERT in-game for co-op menu");
+                LOG_INFO("Config-driven co-op active (no in-game menu)");
                 LOG_INFO("========================================");
             } else {
                 LOG_ERROR("========================================");

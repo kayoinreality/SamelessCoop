@@ -1,5 +1,7 @@
 #include "../../include/ui.h"
 #include "../../include/utils.h"
+#include "../../include/session.h"
+#include "../../include/network.h"
 #include <Windows.h>
 #include <thread>
 #include <string>
@@ -79,6 +81,23 @@ HWND TitleScreenNotifier::FindGameWindow() {
     return hwnd;
 }
 
+// Build the live status string shown in the game's title bar. Since the
+// in-game overlay is disabled, this is the player's main co-op status readout.
+static std::wstring BuildStatusTitle() {
+    const std::wstring base = L"DARK SOULS II - SEAMLESS CO-OP";
+    auto& sm = DS2Coop::Session::SessionManager::GetInstance();
+    if (sm.IsActive()) {
+        size_t players = DS2Coop::Network::PeerManager::GetInstance().GetPeerCount() + 1;
+        std::wstring role = sm.IsHost() ? L"Host" : L"Cliente";
+        std::wstring plural = (players == 1) ? L" jogador" : L" jogadores";
+        return base + L"  -  " + role + L"  -  "
+             + std::to_wstring(players) + plural;
+    }
+    if (sm.IsHost())
+        return base + L"  -  Host (aguardando jogadores)";
+    return base + L"  -  conectando...";
+}
+
 void TitleScreenNotifier::UpdateThread() {
     LOG_INFO("Title screen notifier thread started");
 
@@ -88,19 +107,12 @@ void TitleScreenNotifier::UpdateThread() {
     while (m_running) {
         HWND hwnd = FindGameWindow();
         if (hwnd) {
-            // Update window title to show mod is active
-            const wchar_t* newTitle = L"DARK SOULS II \u2605 SEAMLESS CO-OP ACTIVE \u2605 Press INSERT for Menu";
+            // Live co-op status in the title bar (the in-game overlay is off).
+            std::wstring title = BuildStatusTitle();
 
-            if (SetWindowTextW(hwnd, newTitle)) {
+            if (SetWindowTextW(hwnd, title.c_str())) {
                 if (firstUpdate) {
-                    LOG_INFO("========================================");
-                    LOG_INFO("WINDOW TITLE UPDATED!");
-                    LOG_INFO("========================================");
-                    LOG_INFO("Title bar now shows: DARK SOULS II * SEAMLESS CO-OP ACTIVE * Press INSERT for Menu");
-                    LOG_INFO("");
-                    LOG_INFO("This confirms the mod is loaded and active!");
-                    LOG_INFO("Look at the top of your game window!");
-                    LOG_INFO("========================================");
+                    LOG_INFO("Window title now shows live co-op status (no in-game menu).");
                     firstUpdate = false;
                 }
                 attempts++;

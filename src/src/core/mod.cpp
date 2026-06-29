@@ -272,8 +272,9 @@ bool SeamlessCoopMod::Initialize() {
              Hooks::ProtobufHooks::IsSeamlessActive() ? "ENABLED" : "DISABLED");
     LOG_INFO("");
     if (protobufHooked) {
-        LOG_INFO("  Press INSERT to open co-op menu");
-        LOG_INFO("  Host a session or join via IP");
+        LOG_INFO("  Config-driven session: %s (auto-connect)",
+                 m_config.role == "join" ? "JOIN" : "HOST");
+        LOG_INFO("  No in-game menu needed; watch the title bar for status");
         LOG_INFO("  Sessions persist through boss kills and deaths");
     } else {
         LOG_INFO("  Running in PASSIVE MODE (title bar indicator only)");
